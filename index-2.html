@@ -1,0 +1,1188 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מפת ההתיישבות</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --bg:#f8f6f1;--surf:#fff;--bdr:#e2ddd5;
+  --txt:#1a1a18;--mut:#6b6660;
+  --acc:#7a5c2e;--acl:#c8a96e;--acb:#f4ede0;
+  --red:#c0392b;
+  --sh:0 2px 12px rgba(0,0,0,.10);--shl:0 8px 32px rgba(0,0,0,.16);
+  --r:10px;--rs:6px;
+  --fd:'David Libre','Frank Ruhl Libre',serif;
+  --fb:'Heebo','Segoe UI',sans-serif;
+  --th:56px;--fh:86px;
+}
+[data-dark]{--bg:#18160f;--surf:#23200f;--bdr:#3a3520;--txt:#f0ead8;--mut:#a09880;--acb:#2a2210}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--fb);background:var(--bg);color:var(--txt);overflow:hidden}
+
+/* TOPBAR */
+#tb{position:fixed;top:0;right:0;left:0;z-index:1000;height:var(--th);
+  background:var(--surf);border-bottom:1px solid var(--bdr);box-shadow:var(--sh);
+  display:flex;align-items:center;gap:6px;padding:0 10px}
+#logo{font-family:var(--fd);font-size:1.05rem;font-weight:700;color:var(--acc);
+  white-space:nowrap;display:flex;align-items:center;gap:4px;text-decoration:none}
+#sw{flex:1;max-width:240px;position:relative}
+#sw input{width:100%;padding:7px 28px 7px 9px;border:1px solid var(--bdr);
+  border-radius:20px;font-size:.83rem;font-family:var(--fb);background:var(--bg);
+  color:var(--txt);outline:none}
+#sw input:focus{border-color:var(--acc)}
+#sw .ico{position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--mut);pointer-events:none;font-size:.85rem}
+#sr{position:absolute;top:calc(100% + 4px);right:0;left:0;background:var(--surf);
+  border:1px solid var(--bdr);border-radius:var(--rs);box-shadow:var(--shl);
+  max-height:200px;overflow-y:auto;z-index:3000;display:none}
+.sri{padding:8px 11px;cursor:pointer;font-size:.83rem;border-bottom:1px solid var(--bdr);
+  display:flex;align-items:center;gap:7px}
+.sri:last-child{border-bottom:none}
+.sri:hover{background:var(--acb)}
+.sri small{font-size:.7rem;color:var(--mut)}
+.tbtn{height:30px;padding:0 9px;border:1px solid var(--bdr);border-radius:15px;
+  background:var(--surf);color:var(--txt);font-family:var(--fb);font-size:.76rem;
+  font-weight:500;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap;transition:background .15s}
+.tbtn:hover{background:var(--acb)}
+.tbtn.ac{background:var(--acc);border-color:var(--acc);color:#fff}
+.tbtn.ac:hover{background:#6a4c22}
+.tbtn.adm{background:#1a1a2e;border-color:#1a1a2e;color:#fff}
+.tbtn.adm:hover{background:#2d2d50}
+.lbl{display:none}
+@media(min-width:500px){.lbl{display:inline}}
+
+/* FILTERBAR – 2 rows */
+#fb{position:fixed;top:var(--th);right:0;left:0;z-index:900;
+  background:var(--surf);border-bottom:1px solid var(--bdr);
+  padding:5px 8px;display:flex;flex-direction:column;gap:4px}
+.fb-row{display:flex;gap:5px;overflow-x:auto;align-items:center;scrollbar-width:none;padding-bottom:1px}
+.fb-row::-webkit-scrollbar{display:none}
+.fb-lbl{font-size:.68rem;font-weight:700;color:var(--mut);white-space:nowrap;flex-shrink:0}
+.fc{padding:3px 10px;border-radius:12px;border:1px solid var(--bdr);
+  font-size:.73rem;font-family:var(--fb);cursor:pointer;white-space:nowrap;
+  background:var(--bg);color:var(--txt);transition:all .15s;flex-shrink:0}
+.fc.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.fc.on2{background:#2980b9;color:#fff;border-color:#2980b9}
+
+/* APP */
+#app{position:fixed;top:calc(var(--th) + var(--fh));right:0;left:0;bottom:0;display:flex}
+#map{flex:1;z-index:1}
+
+/* SIDE LIST */
+#sl{width:280px;min-width:240px;background:var(--surf);border-left:1px solid var(--bdr);
+  overflow-y:auto;display:none;flex-direction:column;z-index:2}
+#sl.on{display:flex}
+#sl-hd{padding:10px 13px 7px;border-bottom:1px solid var(--bdr);
+  font-weight:700;font-size:.88rem;display:flex;justify-content:space-between;align-items:center}
+#sl-hd small{color:var(--mut);font-weight:400;font-size:.73rem}
+.li{padding:9px 13px;border-bottom:1px solid var(--bdr);cursor:pointer;transition:background .15s;display:flex;gap:7px;align-items:flex-start}
+.li:hover{background:var(--acb)}
+.li-i{font-size:1.15rem;flex-shrink:0;margin-top:1px}
+.li-n{font-weight:600;font-size:.84rem}
+.li-m{font-size:.7rem;color:var(--mut);margin-top:1px}
+
+/* FAB */
+#fab{position:fixed;bottom:14px;left:10px;z-index:800;background:var(--surf);
+  border:1px solid var(--bdr);border-radius:18px;padding:6px 12px;box-shadow:var(--shl);
+  cursor:pointer;font-size:.8rem;font-weight:600;display:flex;align-items:center;gap:4px}
+#fab:hover{background:var(--acb)}
+
+/* POPUP */
+.cpop .leaflet-popup-content-wrapper{border-radius:var(--r);box-shadow:var(--shl);
+  padding:0;overflow:hidden;background:var(--surf);color:var(--txt);min-width:210px}
+.cpop .leaflet-popup-tip-container{display:none}
+.pp-img{width:100%;height:100px;object-fit:cover;display:block}
+.pp-ph{width:100%;height:50px;background:linear-gradient(135deg,var(--acb),var(--bdr));
+  display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+.pp-b{padding:9px 11px 11px}
+.pp-cat{display:inline-block;font-size:.65rem;font-weight:700;padding:2px 6px;
+  border-radius:8px;margin-bottom:3px;background:var(--acb);color:var(--acc);border:1px solid var(--acl)}
+.pp-n{font-weight:700;font-size:.9rem;margin-bottom:1px}
+.pp-a{font-size:.72rem;color:var(--mut);margin-bottom:7px}
+.pp-acts{display:flex;gap:5px}
+.ppb{flex:1;padding:5px 0;border-radius:var(--rs);border:1px solid var(--bdr);
+  background:var(--bg);font-family:var(--fb);font-size:.72rem;font-weight:600;
+  cursor:pointer;text-align:center;color:var(--txt);text-decoration:none;display:block}
+.ppb:hover{background:var(--acb)}
+.ppb.pr{background:var(--acc);color:#fff;border-color:var(--acc)}
+.ppb.pr:hover{background:#6a4c22}
+
+/* OVERLAYS */
+.ov{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.55);
+  backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center;padding:12px}
+.ov.on{display:flex}
+.mb{background:var(--surf);border-radius:14px;box-shadow:var(--shl);
+  width:100%;max-width:520px;max-height:92vh;overflow-y:auto;padding:18px;position:relative}
+.mb h2{font-family:var(--fd);font-size:1.05rem;font-weight:800;margin-bottom:3px;color:var(--acc)}
+.mb .sub{font-size:.78rem;color:var(--mut);margin-bottom:12px}
+.mc{position:absolute;top:9px;left:9px;background:var(--bg);border:1px solid var(--bdr);
+  border-radius:50%;width:27px;height:27px;cursor:pointer;font-size:.9rem;
+  display:flex;align-items:center;justify-content:center;color:var(--mut)}
+.mc:hover{background:var(--bdr)}
+
+/* DETAIL */
+#det-bd{padding:14px 16px 18px}
+#det-bd h2{font-size:1.2rem;font-weight:800;margin-bottom:4px;font-family:var(--fd)}
+.bgs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.bg{font-size:.68rem;padding:2px 7px;border-radius:9px;background:var(--acb);
+  color:var(--acc);border:1px solid var(--acl);font-weight:600}
+.bg.gr{background:#e8f0e8;color:#3a6e3a;border-color:#a0c8a0}
+.bg.bl{background:#e0ecf8;color:#1a5a8a;border-color:#90c0e0}
+[data-dark] .bg.gr{background:#1a2e1a;color:#7ab87a;border-color:#3a6e3a}
+[data-dark] .bg.bl{background:#0a1e2e;color:#70a8d0;border-color:#2a5a8a}
+.det-desc{font-size:.86rem;color:var(--mut);line-height:1.65;margin-bottom:11px}
+.det-lks{display:flex;gap:7px;flex-wrap:wrap}
+.det-lk{padding:6px 11px;border-radius:var(--rs);border:1px solid var(--bdr);
+  background:var(--bg);font-size:.78rem;font-weight:600;color:var(--txt);text-decoration:none;
+  display:flex;align-items:center;gap:4px}
+.det-lk:hover{background:var(--acb)}
+/* suggest edit btn in detail */
+.det-sug{margin-top:12px;padding-top:11px;border-top:1px solid var(--bdr)}
+.det-sug button{padding:6px 14px;border-radius:var(--rs);border:1px solid var(--bdr);
+  background:var(--bg);font-family:var(--fb);font-size:.78rem;cursor:pointer;color:var(--mut)}
+.det-sug button:hover{background:var(--acb);color:var(--txt)}
+
+/* FORM */
+.fr{margin-bottom:10px}
+.fr label{display:block;font-size:.76rem;font-weight:600;margin-bottom:3px}
+.fr label .rq{color:var(--acc)}
+.fr input,.fr textarea,.fr select{width:100%;padding:7px 9px;border:1px solid var(--bdr);
+  border-radius:var(--rs);font-family:var(--fb);font-size:.84rem;background:var(--bg);
+  color:var(--txt);outline:none;direction:rtl}
+.fr input:focus,.fr textarea:focus,.fr select:focus{border-color:var(--acc)}
+.fr textarea{resize:vertical;min-height:60px}
+.fr2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fa{display:flex;gap:7px;justify-content:flex-end;margin-top:14px}
+.bc{padding:6px 14px;border-radius:var(--rs);border:1px solid var(--bdr);
+  background:var(--bg);font-family:var(--fb);font-size:.83rem;cursor:pointer;color:var(--txt)}
+.bc:hover{background:var(--bdr)}
+.bs{padding:6px 18px;border-radius:var(--rs);border:none;background:var(--acc);
+  color:#fff;font-family:var(--fb);font-size:.83rem;font-weight:700;cursor:pointer}
+.bs:hover{background:#6a4c22}
+.bs:disabled{opacity:.5;cursor:not-allowed}
+.ok{text-align:center;padding:22px 14px;display:none;flex-direction:column;align-items:center;gap:7px}
+.ok .ck{font-size:2.6rem}
+.ok h3{font-family:var(--fd);font-size:1.05rem;color:var(--acc)}
+
+/* MAP PICKER */
+.mp-w{margin-top:5px;border-radius:var(--rs);overflow:hidden;border:1px solid var(--bdr)}
+.mp-w .mp{height:165px}
+.cd{font-size:.7rem;color:var(--mut);margin-top:2px}
+.le{font-size:.72rem;color:var(--acc);cursor:pointer;text-decoration:underline;margin-top:2px;display:block}
+
+/* PAGE OVERLAYS */
+.pov{position:fixed;inset:0;z-index:1500;background:var(--bg);overflow-y:auto;
+  display:none;flex-direction:column;padding-top:calc(var(--th) + var(--fh))}
+.pov.on{display:flex}
+.pin{max-width:600px;width:100%;margin:0 auto;padding:20px 14px 60px}
+.pin h1{font-family:var(--fd);font-size:1.4rem;font-weight:800;color:var(--acc);margin-bottom:4px}
+.pin .sub{color:var(--mut);font-size:.85rem;margin-bottom:18px}
+.pin p{font-size:.88rem;line-height:1.75;margin-bottom:10px}
+.bb{display:inline-flex;align-items:center;gap:5px;margin-bottom:16px;padding:5px 12px;
+  border:1px solid var(--bdr);border-radius:14px;background:var(--surf);color:var(--txt);
+  font-size:.78rem;font-weight:600;cursor:pointer;text-decoration:none}
+.bb:hover{background:var(--acb)}
+.nc{background:var(--surf);border:1px solid var(--bdr);border-radius:var(--r);
+  padding:11px 13px;display:flex;gap:9px;align-items:flex-start;cursor:pointer}
+.nc:hover{box-shadow:var(--sh)}
+.nc+.nc{margin-top:8px}
+.nc-i{font-size:1.5rem;flex-shrink:0}
+.nc-n{font-weight:700;font-size:.88rem}
+.nc-m{font-size:.7rem;color:var(--mut);margin-top:2px}
+.nc-d{font-size:.68rem;color:var(--acc);font-weight:600}
+.ntg{display:inline-block;background:var(--acc);color:#fff;font-size:.58rem;font-weight:800;
+  padding:1px 5px;border-radius:5px;margin-left:4px;vertical-align:middle}
+
+/* ADMIN */
+#adm-ov{position:fixed;inset:0;z-index:4000;background:#0d0d1a;display:none;flex-direction:column}
+#adm-ov.on{display:flex}
+#adm-bar{background:#1a1a2e;color:#e0e0f8;padding:0 12px;height:48px;
+  display:flex;align-items:center;gap:8px;flex-shrink:0;border-bottom:1px solid #2d2d50}
+#adm-bar .alogo{font-family:var(--fd);font-size:.95rem;font-weight:800;color:#c8a96e}
+#adm-bar .ast{background:rgba(255,255,255,.12);border-radius:10px;padding:2px 8px;font-size:.72rem;font-weight:700}
+#adm-bar button{padding:3px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.2);
+  background:transparent;color:#e0e0f8;font-family:var(--fb);font-size:.75rem;cursor:pointer}
+#adm-bar button:hover{background:rgba(255,255,255,.1)}
+#adm-bar button.gr{background:#27ae60;border-color:#27ae60;color:#fff}
+#adm-bar button.gr:hover{background:#1e8449}
+#adm-tabs{background:#14142a;display:flex;border-bottom:1px solid #2d2d50;flex-shrink:0;overflow-x:auto}
+.atab{padding:8px 14px;font-size:.8rem;font-weight:600;color:#a0a0c0;cursor:pointer;
+  border-bottom:2px solid transparent;white-space:nowrap;font-family:var(--fb)}
+.atab.on{color:#c8a96e;border-bottom-color:#c8a96e}
+.atab:hover{color:#e0e0f8}
+#adm-ct{flex:1;overflow-y:auto;padding:16px}
+#adm-ct .stl{font-size:.92rem;font-weight:800;color:#c8a96e;margin-bottom:10px;font-family:var(--fd)}
+.atw{background:#1a1a2e;border:1px solid #2d2d50;border-radius:var(--r);overflow:hidden;overflow-x:auto}
+table.at{width:100%;border-collapse:collapse;font-size:.79rem;direction:rtl}
+table.at th{background:#12122a;color:#8888cc;padding:8px 10px;text-align:right;
+  font-weight:700;font-size:.72rem;white-space:nowrap;border-bottom:1px solid #2d2d50}
+table.at td{padding:8px 10px;border-bottom:1px solid #1d1d3a;color:#d0d0e8;vertical-align:middle}
+table.at tr:last-child td{border-bottom:none}
+table.at tr:hover td{background:#1e1e38}
+.aa{display:flex;gap:4px}
+.ab{padding:3px 8px;border-radius:4px;font-size:.7rem;font-weight:700;cursor:pointer;
+  font-family:var(--fb);border:1px solid #3d3d60;background:#2a2a50;color:#d0d0f0}
+.ab.ed:hover{background:#3a3a80}
+.ab.dl{border-color:#6d2d2d;color:#ff8080}
+.ab.dl:hover{background:#c0392b;border-color:#c0392b;color:#fff}
+.ab.ap{border-color:#2d6d3d;color:#60c080}
+.ab.ap:hover{background:#27ae60;border-color:#27ae60;color:#fff}
+.ab.rj{border-color:#6d2d2d;color:#ff8080}
+.ab.rj:hover{background:#c0392b;color:#fff}
+.af .fr input,.af .fr textarea,.af .fr select{background:#12122a;border-color:#2d2d50;color:#e0e0f8}
+.af h2{color:#c8a96e}
+.af .bs{background:#c8a96e;color:#1a1a00}
+.af .bs:hover{background:#b8994e}
+.af .fr label{color:#c0c0e0}
+
+/* IMPORT */
+.idrp{border:2px dashed #3d3d60;border-radius:var(--r);padding:24px 16px;
+  text-align:center;cursor:pointer;color:#8888cc}
+.idrp:hover{border-color:#c8a96e;color:#c8a96e}
+.ipv{background:#12122a;border:1px solid #2d2d50;border-radius:var(--r);margin-top:10px;overflow:hidden}
+.ipr{padding:6px 11px;border-bottom:1px solid #1d1d3a;font-size:.77rem;color:#c0c0e0;display:flex;gap:6px;align-items:center}
+.ipr:last-child{border-bottom:none}
+.itg{font-size:.64rem;padding:1px 5px;border-radius:6px;font-weight:700}
+.itg.nw{background:#1e4d2e;color:#60c080;border:1px solid #2d6d3d}
+.itg.dp{background:#4d3d1e;color:#c0a060;border:1px solid #6d5d2e}
+.alr{padding:7px 10px;border-bottom:1px solid #1d1d3a;font-size:.76rem;color:#a0a0c0}
+.alr:last-child{border-bottom:none}
+.alr .aa2{font-weight:700;color:#c8a96e;margin-left:6px}
+
+/* LOGIN */
+#lg-ov{position:fixed;inset:0;z-index:5000;background:rgba(10,10,20,.95);display:none;align-items:center;justify-content:center}
+#lg-ov.on{display:flex}
+#lg-box{background:#1a1a2e;border:1px solid #3d3d60;border-radius:14px;padding:26px 22px;width:100%;max-width:310px}
+#lg-box h2{font-family:var(--fd);font-size:1.1rem;color:#c8a96e;margin-bottom:3px;text-align:center}
+#lg-box .sub{font-size:.75rem;color:#8888aa;text-align:center;margin-bottom:16px}
+#lg-box input{width:100%;padding:7px 10px;background:#0d0d1a;border:1px solid #3d3d60;
+  border-radius:var(--rs);color:#e0e0f8;font-family:var(--fb);font-size:.86rem;margin-bottom:8px;outline:none;direction:ltr}
+#lg-box input:focus{border-color:#c8a96e}
+#lg-box .lerr{color:#ff7070;font-size:.74rem;min-height:15px;margin-bottom:6px;text-align:center}
+#lg-box button{width:100%;padding:8px;background:#c8a96e;border:none;border-radius:var(--rs);
+  color:#1a1a00;font-weight:800;font-family:var(--fb);font-size:.88rem;cursor:pointer}
+#lg-box button:hover{background:#b8994e}
+#lg-box .bx{background:transparent;border:1px solid #3d3d60;color:#a0a0c0;margin-top:6px;font-weight:500}
+#lg-box .bx:hover{background:#2d2d50;color:#e0e0f8}
+
+/* CONFIRM */
+#cf-ov .mb{max-width:320px;text-align:center;padding:20px}
+#cf-ov p{margin:10px 0 16px;font-size:.85rem;color:var(--mut)}
+
+/* SPINNER / TOAST / MARKER */
+.sp{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);
+  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+#toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:#1a1a18;
+  color:#fff;padding:7px 16px;border-radius:16px;font-size:.8rem;font-weight:600;
+  z-index:9000;opacity:0;pointer-events:none;transition:opacity .25s;white-space:nowrap}
+#toast.on{opacity:1}
+.mkr{display:flex;align-items:center;justify-content:center;width:30px;height:30px;
+  border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+  border:2px solid rgba(255,255,255,.8);box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.mkr span{transform:rotate(45deg);display:block;font-size:13px}
+.leaflet-control-layers{direction:ltr;font-family:var(--fb);font-size:.8rem}
+</style>
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div id="tb">
+  <a id="logo" href="#">🗺️ <span class="lbl">מפת ההתיישבות</span></a>
+  <div id="sw">
+    <span class="ico">🔍</span>
+    <input type="text" id="si" placeholder="חיפוש..." autocomplete="off">
+    <div id="sr"></div>
+  </div>
+  <button class="tbtn ac" id="btn-add">＋ <span class="lbl">הצעת נקודה</span></button>
+  <button class="tbtn" id="btn-news">🔔</button>
+  <button class="tbtn" id="btn-about">אודות</button>
+  <button class="tbtn adm" id="btn-adm">⚙️</button>
+  <button class="tbtn" id="btn-dk">🌙</button>
+</div>
+
+<!-- FILTERBAR – 2 rows -->
+<div id="fb">
+  <div class="fb-row">
+    <span class="fb-lbl">סוג:</span>
+    <button class="fc on" data-f="all" data-g="cat">הכל</button>
+    <button class="fc" data-f="cat-חווה" data-g="cat">🌾 חווה</button>
+    <button class="fc" data-f="cat-גבעה" data-g="cat">⛰️ גבעה</button>
+    <button class="fc" data-f="cat-יישוב" data-g="cat">🏘️ יישוב</button>
+    <button class="fc" data-f="cat-מאחז" data-g="cat">🏕️ מאחז</button>
+  </div>
+  <div class="fb-row">
+    <span class="fb-lbl">אזור:</span>
+    <button class="fc on" data-f="all" data-g="area">הכל</button>
+    <button class="fc" data-f="area-בנימין" data-g="area">בנימין</button>
+    <button class="fc" data-f="area-שומרון" data-g="area">שומרון</button>
+    <button class="fc" data-f="area-גוש עציון" data-g="area">גוש עציון</button>
+    <button class="fc" data-f="area-הר חברון" data-g="area">הר חברון</button>
+    <button class="fc" data-f="area-בקעת הירדן" data-g="area">בקעת הירדן</button>
+    <span class="fb-lbl" style="margin-right:6px">שטח:</span>
+    <button class="fc" data-f="zone-A" data-g="zone">A</button>
+    <button class="fc" data-f="zone-B" data-g="zone">B</button>
+    <button class="fc" data-f="zone-C" data-g="zone">C</button>
+  </div>
+</div>
+
+<!-- MAP -->
+<div id="app">
+  <div id="map"></div>
+  <div id="sl">
+    <div id="sl-hd">רשימת נקודות <small id="sl-cnt"></small></div>
+    <div id="sl-items"></div>
+  </div>
+</div>
+<div id="fab">📋 רשימה</div>
+
+<!-- DETAIL -->
+<div class="ov" id="det-ov">
+  <div class="mb" style="padding:0;max-width:520px">
+    <button class="mc" id="det-c" style="z-index:10">✕</button>
+    <div id="det-ph"></div>
+    <div id="det-bd"></div>
+  </div>
+</div>
+
+<!-- SUGGEST NEW POINT -->
+<div class="ov" id="sug-ov">
+  <div class="mb">
+    <button class="mc" id="sug-c">✕</button>
+    <h2>✏️ הצעת נקודה חדשה</h2>
+    <p class="sub">הפרטים יועברו לבדיקה לפני פרסום</p>
+    <div id="sug-f">
+      <div class="fr"><label>שם <span class="rq">*</span></label><input id="sf-n" type="text"></div>
+      <div class="fr2 fr">
+        <div class="fr" style="margin-bottom:0"><label>קטגוריה</label>
+          <select id="sf-c"><option value="">בחר...</option><option>חווה</option><option>גבעה</option><option>יישוב</option><option>מאחז</option></select></div>
+        <div class="fr" style="margin-bottom:0"><label>אזור</label>
+          <select id="sf-a"><option value="">בחר...</option><option>בנימין</option><option>שומרון</option><option>גוש עציון</option><option>הר חברון</option><option>בקעת הירדן</option></select></div>
+      </div>
+      <div class="fr"><label>שטח</label>
+        <select id="sf-zone"><option value="">לא ידוע</option><option value="A">שטח A</option><option value="B">שטח B</option><option value="C">שטח C</option></select></div>
+      <div class="fr">
+        <label>מיקום <span class="rq">*</span> – לחץ על המפה</label>
+        <div class="mp-w"><div class="mp" id="sug-mp"></div></div>
+        <div class="cd" id="sug-cd">לא נבחר מיקום</div>
+        <input type="hidden" id="sf-lat"><input type="hidden" id="sf-lng">
+      </div>
+      <div class="fr"><label>תיאור</label><textarea id="sf-d"></textarea></div>
+      <div class="fr2 fr">
+        <div class="fr" style="margin-bottom:0"><label>שם מציע <span class="rq">*</span></label><input id="sf-sn" type="text"></div>
+        <div class="fr" style="margin-bottom:0"><label>טלפון <span class="rq">*</span></label><input id="sf-tel" type="tel"></div>
+      </div>
+      <div class="fa">
+        <button class="bc" id="sug-cn">ביטול</button>
+        <button class="bs" id="sug-sb">שלח הצעה</button>
+      </div>
+    </div>
+    <div class="ok" id="sug-ok">
+      <div class="ck">✅</div><h3>ההצעה נשלחה!</h3>
+      <p style="font-size:.8rem;color:var(--mut)">תודה. הנקודה תפורסם לאחר אישור.</p>
+      <button class="bs" style="margin-top:6px" id="sug-ok-c">סגור</button>
+    </div>
+  </div>
+</div>
+
+<!-- SUGGEST EDIT OF EXISTING POINT -->
+<div class="ov" id="sug-ed-ov">
+  <div class="mb">
+    <button class="mc" id="sug-ed-c">✕</button>
+    <h2>🔧 הצעת עריכה לנקודה</h2>
+    <p class="sub" id="sug-ed-sub">מה אתה מציע לשנות?</p>
+    <input type="hidden" id="sed-pt-id">
+    <div class="fr"><label>שינוי מוצע <span class="rq">*</span></label><textarea id="sed-msg" placeholder="תאר מה יש לשנות / להוסיף / לתקן..."></textarea></div>
+    <div class="fr2 fr">
+      <div class="fr" style="margin-bottom:0"><label>שם <span class="rq">*</span></label><input id="sed-sn" type="text"></div>
+      <div class="fr" style="margin-bottom:0"><label>טלפון <span class="rq">*</span></label><input id="sed-tel" type="tel"></div>
+    </div>
+    <div class="fa">
+      <button class="bc" id="sug-ed-cn">ביטול</button>
+      <button class="bs" id="sug-ed-sb">שלח הצעה</button>
+    </div>
+    <div class="ok" id="sug-ed-ok">
+      <div class="ck">✅</div><h3>ההצעה נשלחה!</h3>
+      <p style="font-size:.8rem;color:var(--mut)">תודה. ייבדק בהקדם.</p>
+      <button class="bs" style="margin-top:6px" id="sug-ed-ok-c">סגור</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEWS -->
+<div class="pov" id="news-pov">
+  <div class="pin">
+    <button class="bb" data-pc="news-pov">← חזרה למפה</button>
+    <h1>🔔 מה חדש</h1><p class="sub">נקודות שנוספו לאחרונה</p>
+    <div id="news-l"><div style="color:var(--mut)">טוען...</div></div>
+  </div>
+</div>
+
+<!-- ABOUT -->
+<div class="pov" id="about-pov">
+  <div class="pin">
+    <button class="bb" data-pc="about-pov">← חזרה למפה</button>
+    <h1>🌿 אודות</h1>
+    <p class="sub">מפת ההתיישבות – מאגר מידע על חוות ויישובים ביהודה ושומרון ובקעת הירדן</p>
+    <p>אתר זה מרכז מידע מהשטח על חוות חקלאיות, גבעות, יישובים ומאחזים.</p>
+    <p>המידע מגיע מעדכונים מהשטח ותרומות מתיישבים. כל נקודה שמוגשת עוברת בדיקה לפני פרסום.</p>
+    <p>לתרומת נקודה חדשה לחץ על <strong>הצעת נקודה</strong> בתפריט.</p>
+  </div>
+</div>
+
+<!-- LOGIN -->
+<div id="lg-ov">
+  <div id="lg-box">
+    <h2>⚙️ כניסת אדמין</h2>
+    <p class="sub">גישה מורשית בלבד</p>
+    <input type="email" id="lg-em" placeholder="אימייל" autocomplete="username">
+    <input type="password" id="lg-pw" placeholder="סיסמה" autocomplete="current-password">
+    <div class="lerr" id="lg-err"></div>
+    <button id="lg-btn">כניסה</button>
+    <button class="bx" id="lg-cn" style="margin-top:6px;width:100%;padding:6px;border-radius:var(--rs);cursor:pointer;font-family:var(--fb);border:1px solid #3d3d60;background:transparent;color:#a0a0c0">ביטול</button>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adm-ov">
+  <div id="adm-bar">
+    <span class="alogo">⚙️ ניהול מפה</span>
+    <span style="flex:1"></span>
+    <span class="ast" id="adm-st">0 נקודות</span>
+    <button class="gr" id="adm-add">＋ הוסף</button>
+    <button id="adm-exp">⬇️ ייצוא</button>
+    <button id="adm-out">יציאה</button>
+  </div>
+  <div id="adm-tabs">
+    <div class="atab on" data-tab="pts">📍 נקודות</div>
+    <div class="atab" data-tab="sug">📬 הצעות</div>
+    <div class="atab" data-tab="imp">📥 ייבוא</div>
+    <div class="atab" data-tab="log">📋 יומן</div>
+  </div>
+  <div id="adm-ct"></div>
+</div>
+
+<!-- ADMIN FORM -->
+<div class="ov af" id="af-ov" style="z-index:5000">
+  <div class="mb" style="background:#1a1a2e;max-width:540px">
+    <button class="mc" id="af-c" style="background:#12122a;border-color:#3d3d60;color:#aaa">✕</button>
+    <h2 id="af-ttl">➕ הוספת נקודה</h2>
+    <p class="sub" style="color:#8888aa">נשמר ישירות ב-Supabase</p>
+    <input type="hidden" id="af-id">
+    <div class="fr"><label>שם <span class="rq">*</span></label><input id="af-n" type="text"></div>
+    <div class="fr2 fr">
+      <div class="fr" style="margin-bottom:0"><label>קטגוריה</label>
+        <select id="af-cat"><option>חווה</option><option>גבעה</option><option>יישוב</option><option>מאחז</option></select></div>
+      <div class="fr" style="margin-bottom:0"><label>אזור</label>
+        <select id="af-ar"><option value="">--</option><option>בנימין</option><option>שומרון</option><option>גוש עציון</option><option>הר חברון</option><option>בקעת הירדן</option></select></div>
+    </div>
+    <div class="fr"><label>שטח</label>
+      <select id="af-zone"><option value="">לא מוגדר</option><option value="A">שטח A</option><option value="B">שטח B</option><option value="C">שטח C</option></select></div>
+    <div class="fr">
+      <label>מיקום <span class="rq">*</span></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:5px">
+        <input id="af-lat" type="number" step="0.000001" placeholder="קו רוחב (Lat)">
+        <input id="af-lng" type="number" step="0.000001" placeholder="קו אורך (Lng)">
+      </div>
+      <input id="af-lnk" type="text" placeholder="הדבק קישור Google Maps / Waze לחילוץ מיקום...">
+      <span class="le" id="af-ext">⬆️ חלץ קואורדינטות מהקישור</span>
+      <div class="mp-w"><div class="mp" id="af-mp"></div></div>
+      <div class="cd" id="af-cd">לחץ על המפה לסימון מיקום</div>
+    </div>
+    <div class="fr"><label>תיאור</label><textarea id="af-d"></textarea></div>
+    <div class="fr"><label>תמונה (URL)</label><input id="af-img" type="url" placeholder="https://..."></div>
+    <div class="fr"><label>תגיות (מופרדות בפסיק)</label><input id="af-tags" type="text"></div>
+    <div class="fa">
+      <button class="bc" id="af-cn" style="border-color:#3d3d60;color:#c0c0e0;background:#12122a">ביטול</button>
+      <button class="bs" id="af-sv">שמור</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM DELETE -->
+<div class="ov" id="cf-ov" style="z-index:6000">
+  <div class="mb" style="max-width:310px;text-align:center;padding:20px">
+    <p id="cf-txt" style="margin:8px 0 14px;font-size:.84rem;color:var(--mut)"></p>
+    <div class="fa" style="justify-content:center">
+      <button class="bc" id="cf-no">ביטול</button>
+      <button class="bs" id="cf-yes" style="background:var(--red)">מחק</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+const SB_URL='https://nxbmbkbqcghizpxarasq.supabase.co';
+const SB_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im54Ym1ia2JxY2doaXpweGFyYXNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyMzA1MjUsImV4cCI6MjA5NjgwNjUyNX0.XPhfAKf02pQC-_Bw2lnMLo9ADsILYHo21yDQKdoOodo';
+const sb=supabase.createClient(SB_URL,SB_KEY);
+
+const ICO={'חווה':'🌾','גבעה':'⛰️','יישוב':'🏘️','מאחז':'🏕️'};
+const CLR={'חווה':'#e67e22','גבעה':'#8e44ad','יישוב':'#27ae60','מאחז':'#2980b9'};
+const ZONE_CLR={'A':'#c0392b','B':'#e67e22','C':'#27ae60'};
+
+// STATE
+let PTS=[], filtCat='all', filtArea='all', filtZone='all', srch='';
+let listOpen=false, dark=false, delId=null, session=null, curTab='pts';
+let sugMap=null, sugMkr=null, afMap=null, afMkr=null, importData=[];
+
+// HELPERS
+function toast(msg,dur=3000){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'),dur);
+}
+function waze(lat,lng){return`https://waze.com/ul?ll=${lat},${lng}&navigate=yes`}
+function gmaps(lat,lng){return`https://maps.google.com/?q=${lat},${lng}`}
+function isoDate(){return new Date().toISOString().slice(0,10)}
+
+function extractCoords(url){
+  const ps=[/@(-?\d+\.\d+),(-?\d+\.\d+)/,/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+    /maps\/(-?\d+\.\d+),(-?\d+\.\d+)/];
+  for(const p of ps){const m=url.match(p);if(m)return{lat:+m[1],lng:+m[2]};}
+  const wm=url.match(/ll=(-?\d+[\.,]\d+)[,%2C]+(-?\d+[\.,]\d+)/);
+  if(wm)return{lat:parseFloat(wm[1]),lng:parseFloat(wm[2])};
+  return null;
+}
+
+// MAP
+const map=L.map('map',{center:[31.8,35.2],zoom:9,zoomControl:false,preferCanvas:true});
+const lyrs={
+  'לוויין (Google)':L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+    {attribution:'© Google',maxZoom:21,subdomains:['0','1','2','3']}),
+  'רחובות (OSM)':L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenStreetMap',maxZoom:19}),
+  'טופוגרפי':L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+    {attribution:'© OpenTopoMap',maxZoom:17})
+};
+lyrs['לוויין (Google)'].addTo(map);
+L.control.layers(lyrs,{},{position:'bottomright',collapsed:true}).addTo(map);
+L.control.zoom({position:'bottomright'}).addTo(map);
+
+const mg=L.layerGroup().addTo(map);
+const mr={};
+
+function mkIcon(cat,zone){
+  const c=CLR[cat]||'#555',i=ICO[cat]||'📍';
+  const zc=zone?ZONE_CLR[zone]:'transparent';
+  return L.divIcon({className:'',
+    html:`<div class="mkr" style="background:${c};box-shadow:0 0 0 3px ${zc},0 2px 6px rgba(0,0,0,.3)"><span>${i}</span></div>`,
+    iconSize:[30,30],iconAnchor:[15,28],popupAnchor:[-15,-30]});
+}
+
+function popHtml(p){
+  const img=p.img?`<img class="pp-img" src="${p.img}" alt="" onerror="this.style.display='none'">`
+    :`<div class="pp-ph">${ICO[p.cat]||'📍'}</div>`;
+  const zone=p.zone?`<span style="font-size:.62rem;background:${ZONE_CLR[p.zone]||'#555'};color:#fff;padding:1px 5px;border-radius:6px;font-weight:700;margin-right:4px">שטח ${p.zone}</span>`:'';
+  return`${img}<div class="pp-b">
+    <div class="pp-cat">${ICO[p.cat]||''} ${p.cat}</div>
+    <div class="pp-n">${p.name}</div>
+    <div class="pp-a">${zone}${p.area||''}</div>
+    <div class="pp-acts">
+      <button class="ppb pr" onclick="openDet('${p.id}')">פרטים מלאים</button>
+      <a class="ppb" href="${waze(p.lat,p.lng)}" target="_blank">🚗 Waze</a>
+    </div></div>`;
+}
+
+function getFiltered(){
+  let pts=[...PTS];
+  if(srch){const q=srch.toLowerCase();pts=pts.filter(p=>p.name.toLowerCase().includes(q)||(p.tags||[]).some(t=>t.toLowerCase().includes(q)));}
+  if(filtCat!=='all'){if(filtCat.startsWith('cat-'))pts=pts.filter(p=>p.cat===filtCat.slice(4));}
+  if(filtArea!=='all'){if(filtArea.startsWith('area-'))pts=pts.filter(p=>p.area===filtArea.slice(5));}
+  if(filtZone!=='all'){if(filtZone.startsWith('zone-'))pts=pts.filter(p=>p.zone===filtZone.slice(5));}
+  return pts;
+}
+
+function renderMarkers(){
+  mg.clearLayers();
+  const pts=getFiltered();
+  pts.forEach(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:mkIcon(p.cat,p.zone)});
+    m.bindPopup(popHtml(p),{className:'cpop',minWidth:210,maxWidth:255,closeButton:false});
+    m.addTo(mg);mr[p.id]=m;
+  });
+  renderList(pts);
+  if(session)document.getElementById('adm-st').textContent=`${PTS.length} נקודות`;
+}
+
+function renderList(pts){
+  document.getElementById('sl-cnt').textContent=`${pts.length} נקודות`;
+  document.getElementById('sl-items').innerHTML=pts.map(p=>`
+    <div class="li" onclick="focusPt('${p.id}')">
+      <div class="li-i">${ICO[p.cat]||'📍'}</div>
+      <div><div class="li-n">${p.name}</div>
+      <div class="li-m">${p.cat}${p.zone?` · שטח ${p.zone}`:''}${p.area?` · ${p.area}`:''}</div></div>
+    </div>`).join('');
+}
+
+// FILTERS – independent per group
+document.querySelectorAll('.fc').forEach(b=>{
+  b.addEventListener('click',()=>{
+    const g=b.dataset.g;
+    document.querySelectorAll(`.fc[data-g="${g}"]`).forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    const f=b.dataset.f;
+    if(g==='cat')filtCat=f;
+    else if(g==='area')filtArea=f;
+    else if(g==='zone')filtZone=f;
+    renderMarkers();
+  });
+});
+
+// LOAD
+async function loadPts(){
+  const{data,error}=await sb.from('points').select('*').order('created_at',{ascending:false});
+  if(error){console.error(error);toast('⚠️ שגיאה בטעינת נקודות');return;}
+  PTS=data||[];renderMarkers();
+}
+
+// SEARCH
+const si=document.getElementById('si'),srEl=document.getElementById('sr');
+si.addEventListener('input',()=>{
+  srch=si.value.trim().toLowerCase();renderMarkers();
+  if(!srch){srEl.style.display='none';return;}
+  const ms=PTS.filter(p=>p.name.toLowerCase().includes(srch)).slice(0,5);
+  srEl.innerHTML=ms.map(p=>`<div class="sri" onclick="focusPt('${p.id}')">
+    <span>${ICO[p.cat]||'📍'}</span>
+    <div><div>${p.name}</div><small>${p.cat}${p.zone?` · שטח ${p.zone}`:''}${p.area?` · ${p.area}`:''}</small></div>
+  </div>`).join('');
+  srEl.style.display=ms.length?'block':'none';
+});
+document.addEventListener('click',e=>{if(!e.target.closest('#sw'))srEl.style.display='none';});
+
+function focusPt(id){
+  srEl.style.display='none';si.value='';srch='';renderMarkers();
+  const p=PTS.find(x=>x.id===id);if(!p)return;
+  document.querySelectorAll('.pov').forEach(el=>el.classList.remove('on'));
+  map.setView([p.lat,p.lng],14);
+  setTimeout(()=>mr[id]&&mr[id].openPopup(),400);
+}
+
+// FAB
+document.getElementById('fab').addEventListener('click',()=>{
+  listOpen=!listOpen;
+  document.getElementById('sl').classList.toggle('on',listOpen);
+  document.getElementById('fab').textContent=listOpen?'🗺️ מפה':'📋 רשימה';
+  if(listOpen)renderList(getFiltered());
+  setTimeout(()=>map.invalidateSize(),300);
+});
+
+// DETAIL
+function openDet(id){
+  const p=PTS.find(x=>x.id===id);if(!p)return;
+  document.getElementById('det-ph').innerHTML=p.img
+    ?`<img src="${p.img}" alt="" style="width:100%;height:180px;object-fit:cover;display:block;border-radius:14px 14px 0 0" onerror="this.style.display='none'">`
+    :`<div style="height:70px;background:linear-gradient(135deg,var(--acb),var(--bdr));display:flex;align-items:center;justify-content:center;font-size:2.5rem;border-radius:14px 14px 0 0">${ICO[p.cat]||'📍'}</div>`;
+  const tags=(p.tags||[]).map(t=>`<span class="bg">${t}</span>`).join('');
+  const zoneBadge=p.zone?`<span class="bg bl">שטח ${p.zone}</span>`:'';
+  document.getElementById('det-bd').innerHTML=`
+    <h2>${p.name}</h2>
+    <div class="bgs"><span class="bg">${ICO[p.cat]||''} ${p.cat}</span>${p.area?`<span class="bg gr">📍 ${p.area}</span>`:''}${zoneBadge}${tags}</div>
+    ${p.description?`<p class="det-desc">${p.description}</p>`:''}
+    <div class="det-lks">
+      <a class="det-lk" href="${waze(p.lat,p.lng)}" target="_blank">🚗 Waze</a>
+      <a class="det-lk" href="${gmaps(p.lat,p.lng)}" target="_blank">🗺️ Google Maps</a>
+    </div>
+    <div class="det-sug">
+      <button onclick="openSugEdit('${p.id}','${p.name.replace(/'/g,"\\'")}')">🔧 הצע עריכה לנקודה זו</button>
+    </div>
+    <p style="font-size:.67rem;color:var(--mut);margin-top:10px">נוסף: ${p.added||p.created_at?.slice(0,10)||''}</p>`;
+  document.getElementById('det-ov').classList.add('on');
+}
+document.getElementById('det-c').onclick=()=>document.getElementById('det-ov').classList.remove('on');
+document.getElementById('det-ov').addEventListener('click',e=>{if(e.target===document.getElementById('det-ov'))document.getElementById('det-ov').classList.remove('on');});
+
+// SUGGEST NEW
+document.getElementById('btn-add').onclick=()=>{
+  document.getElementById('sug-ov').classList.add('on');
+  document.getElementById('sug-f').style.display='block';
+  document.getElementById('sug-ok').style.display='none';
+  setTimeout(initSugMap,120);
+};
+function initSugMap(){
+  if(!sugMap){
+    sugMap=L.map('sug-mp',{center:[31.8,35.2],zoom:8,zoomControl:false});
+    L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{maxZoom:21,subdomains:['0','1','2','3']}).addTo(sugMap);
+    L.control.zoom({position:'topright'}).addTo(sugMap);
+    sugMap.on('click',e=>{
+      const{lat,lng}=e.latlng;
+      document.getElementById('sf-lat').value=lat.toFixed(6);
+      document.getElementById('sf-lng').value=lng.toFixed(6);
+      document.getElementById('sug-cd').textContent=`${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      if(sugMkr)sugMkr.setLatLng(e.latlng);
+      else{sugMkr=L.marker(e.latlng,{draggable:true}).addTo(sugMap);
+        sugMkr.on('dragend',ev=>{const q=ev.target.getLatLng();
+          document.getElementById('sf-lat').value=q.lat.toFixed(6);
+          document.getElementById('sf-lng').value=q.lng.toFixed(6);
+          document.getElementById('sug-cd').textContent=`${q.lat.toFixed(5)}, ${q.lng.toFixed(5)}`;});}
+    });
+  }
+  sugMap.invalidateSize();
+}
+['sug-c','sug-cn'].forEach(id=>document.getElementById(id).onclick=()=>document.getElementById('sug-ov').classList.remove('on'));
+document.getElementById('sug-ok-c').onclick=()=>{
+  document.getElementById('sug-ov').classList.remove('on');
+  ['sf-n','sf-d','sf-sn','sf-tel','sf-lat','sf-lng'].forEach(i=>document.getElementById(i).value='');
+  document.getElementById('sug-cd').textContent='לא נבחר מיקום';
+  if(sugMkr){sugMkr.remove();sugMkr=null;}
+};
+document.getElementById('sug-sb').onclick=async()=>{
+  const name=document.getElementById('sf-n').value.trim();
+  const lat=document.getElementById('sf-lat').value;
+  const sn=document.getElementById('sf-sn').value.trim();
+  const tel=document.getElementById('sf-tel').value.trim();
+  if(!name){toast('יש למלא שם');return;}
+  if(!lat){toast('יש לסמן מיקום על המפה');return;}
+  if(!sn){toast('יש למלא שם מציע');return;}
+  if(!tel){toast('יש למלא טלפון');return;}
+  const btn=document.getElementById('sug-sb');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span>';
+  const{error}=await sb.from('suggestions').insert({
+    name,cat:document.getElementById('sf-c').value||null,
+    area:document.getElementById('sf-a').value||null,
+    zone:document.getElementById('sf-zone').value||null,
+    lat:+lat,lng:+document.getElementById('sf-lng').value,
+    description:document.getElementById('sf-d').value.trim()||null,
+    submitter_name:sn,submitter_phone:tel
+  });
+  btn.disabled=false;btn.textContent='שלח הצעה';
+  if(error){toast('⚠️ שגיאה בשליחה');console.error(error);return;}
+  document.getElementById('sug-f').style.display='none';
+  document.getElementById('sug-ok').style.display='flex';
+};
+
+// SUGGEST EDIT OF EXISTING POINT
+function openSugEdit(ptId,ptName){
+  document.getElementById('det-ov').classList.remove('on');
+  document.getElementById('sed-pt-id').value=ptId;
+  document.getElementById('sug-ed-sub').textContent=`הצעת עריכה עבור: ${ptName}`;
+  document.getElementById('sed-msg').value='';
+  document.getElementById('sed-sn').value='';
+  document.getElementById('sed-tel').value='';
+  document.getElementById('sug-ed-ov').querySelector('.mb>div:not(.ok)').style.display='block';
+  document.getElementById('sug-ed-ok').style.display='none';
+  document.getElementById('sug-ed-ov').classList.add('on');
+}
+['sug-ed-c','sug-ed-cn'].forEach(id=>document.getElementById(id).onclick=()=>document.getElementById('sug-ed-ov').classList.remove('on'));
+document.getElementById('sug-ed-ok-c').onclick=()=>document.getElementById('sug-ed-ov').classList.remove('on');
+document.getElementById('sug-ed-sb').onclick=async()=>{
+  const msg=document.getElementById('sed-msg').value.trim();
+  const sn=document.getElementById('sed-sn').value.trim();
+  const tel=document.getElementById('sed-tel').value.trim();
+  const ptId=document.getElementById('sed-pt-id').value;
+  if(!msg){toast('יש לתאר את השינוי המוצע');return;}
+  if(!sn||!tel){toast('יש למלא שם וטלפון');return;}
+  const btn=document.getElementById('sug-ed-sb');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span>';
+  // save as suggestion with type='edit'
+  const ptName=PTS.find(p=>p.id===ptId)?.name||'';
+  const{error}=await sb.from('suggestions').insert({
+    name:`[עריכה] ${ptName}`,
+    description:msg,
+    submitter_name:sn,submitter_phone:tel,
+    status:'pending_edit',
+    // store the target point id in area field as workaround (no extra column)
+    area:`edit:${ptId}`
+  });
+  btn.disabled=false;btn.textContent='שלח הצעה';
+  if(error){toast('⚠️ שגיאה');console.error(error);return;}
+  document.getElementById('sug-ed-ok').style.display='flex';
+};
+
+// NEWS
+document.getElementById('btn-news').onclick=async()=>{
+  document.getElementById('news-pov').classList.add('on');
+  const{data}=await sb.from('points').select('id,name,cat,area,zone,added,created_at').order('created_at',{ascending:false}).limit(20);
+  const now=new Date();
+  document.getElementById('news-l').innerHTML=(data||[]).map(p=>{
+    const d=new Date(p.created_at),diff=Math.floor((now-d)/86400000);
+    const ds=diff<1?'היום':diff<7?`לפני ${diff} ימים`:`לפני ${Math.floor(diff/7)} שבועות`;
+    return`<div class="nc" onclick="closePovs();focusPt('${p.id}')">
+      <div class="nc-i">${ICO[p.cat]||'📍'}</div>
+      <div><div class="nc-n">${diff<30?'<span class="ntg">חדש</span>':''}${p.name}</div>
+        <div class="nc-m">${p.cat}${p.zone?` · שטח ${p.zone}`:''}${p.area?` · ${p.area}`:''}</div>
+        <div class="nc-d">${p.added||''} · ${ds}</div></div></div>`;
+  }).join('')||'<p style="color:var(--mut)">אין נקודות עדיין</p>';
+};
+
+document.getElementById('btn-about').onclick=()=>document.getElementById('about-pov').classList.add('on');
+document.querySelectorAll('[data-pc]').forEach(b=>b.onclick=()=>document.getElementById(b.dataset.pc).classList.remove('on'));
+function closePovs(){document.querySelectorAll('.pov').forEach(el=>el.classList.remove('on'));}
+
+// DARK
+document.getElementById('btn-dk').onclick=()=>{
+  dark=!dark;
+  dark?document.documentElement.setAttribute('data-dark','1'):document.documentElement.removeAttribute('data-dark');
+  document.getElementById('btn-dk').textContent=dark?'☀️':'🌙';
+};
+
+// ADMIN LOGIN
+document.getElementById('btn-adm').onclick=()=>{
+  if(session){openAdmin();return;}
+  document.getElementById('lg-ov').classList.add('on');
+  document.getElementById('lg-err').textContent='';
+};
+document.getElementById('lg-cn').onclick=()=>document.getElementById('lg-ov').classList.remove('on');
+document.getElementById('lg-btn').onclick=async()=>{
+  const em=document.getElementById('lg-em').value.trim();
+  const pw=document.getElementById('lg-pw').value;
+  const btn=document.getElementById('lg-btn');
+  btn.disabled=true;btn.innerHTML='<span class="sp" style="border-top-color:#1a1a00"></span>';
+  const{data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
+  btn.disabled=false;btn.textContent='כניסה';
+  if(error||!data.session){document.getElementById('lg-err').textContent='⚠️ פרטים שגויים';return;}
+  session=data.session;
+  document.getElementById('lg-ov').classList.remove('on');
+  openAdmin();
+};
+document.getElementById('adm-out').onclick=async()=>{
+  await sb.auth.signOut();session=null;
+  document.getElementById('adm-ov').classList.remove('on');
+  toast('👋 יצאת מהמערכת');
+};
+
+// ADMIN PANEL
+function openAdmin(){
+  document.getElementById('adm-ov').classList.add('on');
+  switchTab(curTab);
+}
+document.querySelectorAll('.atab').forEach(t=>t.onclick=()=>switchTab(t.dataset.tab));
+function switchTab(tab){
+  curTab=tab;
+  document.querySelectorAll('.atab').forEach(t=>t.classList.toggle('on',t.dataset.tab===tab));
+  if(tab==='pts')renderAdmPts();
+  else if(tab==='sug')renderAdmSug();
+  else if(tab==='imp')renderAdmImp();
+  else if(tab==='log')renderAdmLog();
+}
+
+// ADMIN: POINTS
+async function renderAdmPts(){
+  const c=document.getElementById('adm-ct');
+  c.innerHTML=`<div class="stl">📍 כל הנקודות</div><div id="ap-w" style="color:#8888cc">טוען...</div>`;
+  const{data,error}=await sb.from('points').select('*').order('created_at',{ascending:false});
+  if(error){document.getElementById('ap-w').innerHTML=`<div style="color:#ff7070">שגיאה: ${error.message}</div>`;return;}
+  PTS=data||[];renderMarkers();
+  document.getElementById('ap-w').innerHTML=!PTS.length?'<p style="color:#8888cc">אין נקודות עדיין</p>':`
+    <div class="atw"><table class="at">
+      <thead><tr><th>שם</th><th>סוג</th><th>אזור</th><th>שטח</th><th>קואורדינטות</th><th>פעולות</th></tr></thead>
+      <tbody>${PTS.map(p=>`<tr>
+        <td style="color:#e0e0f8;font-weight:600">${p.name}</td>
+        <td style="color:${CLR[p.cat]||'#aaa'}">${ICO[p.cat]||''} ${p.cat}</td>
+        <td style="color:#a0a0c0">${p.area||'-'}</td>
+        <td>${p.zone?`<span style="background:${ZONE_CLR[p.zone]};color:#fff;padding:1px 6px;border-radius:5px;font-size:.68rem;font-weight:700">${p.zone}</span>`:'-'}</td>
+        <td style="color:#6060a0;font-size:.7rem">${p.lat?.toFixed(4)}, ${p.lng?.toFixed(4)}</td>
+        <td><div class="aa">
+          <button class="ab ed" onclick="openAF('${p.id}')">✏️</button>
+          <button class="ab dl" onclick="confirmDel('${p.id}')">🗑️</button>
+        </div></td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+}
+
+// ADMIN: SUGGESTIONS
+async function renderAdmSug(){
+  const c=document.getElementById('adm-ct');
+  c.innerHTML=`<div class="stl">📬 הצעות ממשתמשים</div><div id="as-w" style="color:#8888cc">טוען...</div>`;
+  const{data}=await sb.from('suggestions').select('*').order('created_at',{ascending:false});
+  if(!data||!data.length){document.getElementById('as-w').innerHTML='<p style="color:#8888cc">אין הצעות</p>';return;}
+  document.getElementById('as-w').innerHTML=`
+    <div class="atw"><table class="at">
+      <thead><tr><th>שם</th><th>סוג</th><th>מציע</th><th>טלפון</th><th>סטטוס</th><th>פעולות</th></tr></thead>
+      <tbody>${data.map(s=>{
+        const isEdit=s.status==='pending_edit';
+        const stClr=s.status==='pending'||isEdit?'#c8a96e':s.status==='approved'?'#60c080':'#ff7070';
+        const stLbl=isEdit?'עריכה':s.status==='pending'?'ממתין':s.status==='approved'?'אושר':'נדחה';
+        return`<tr>
+          <td style="color:#e0e0f8;font-weight:600">${s.name}</td>
+          <td style="color:#a0a0c0">${isEdit?'🔧 עריכה':(s.cat||'-')}</td>
+          <td>${s.submitter_name}</td>
+          <td style="color:#6060a0">${s.submitter_phone}</td>
+          <td><span style="color:${stClr}">${stLbl}</span></td>
+          <td><div class="aa">${(s.status==='pending'||isEdit)?
+            `<button class="ab ap" onclick="approveSug('${s.id}')">✅</button>
+             <button class="ab rj" onclick="rejectSug('${s.id}')">❌</button>`:''}
+          </div></td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`;
+}
+
+async function approveSug(id){
+  const{data:s}=await sb.from('suggestions').select('*').eq('id',id).single();
+  if(!s)return;
+  if(s.status==='pending_edit'){
+    // just mark approved – admin handles manually
+    await sb.from('suggestions').update({status:'approved'}).eq('id',id);
+    toast(`✅ הצעת העריכה אושרה – ערוך את הנקודה ידנית`);
+    renderAdmSug();return;
+  }
+  const{error}=await sb.from('points').insert({name:s.name,cat:s.cat||'יישוב',area:s.area,zone:s.zone,lat:s.lat,lng:s.lng,description:s.description,added:isoDate()});
+  if(error){toast('⚠️ שגיאה');return;}
+  await sb.from('suggestions').update({status:'approved'}).eq('id',id);
+  await admLog('approve_suggestion',id,s.name);
+  toast(`✅ "${s.name}" אושרה ונוספה`);
+  loadPts();renderAdmSug();
+}
+async function rejectSug(id){
+  const{data:s}=await sb.from('suggestions').select('name').eq('id',id).single();
+  await sb.from('suggestions').update({status:'rejected'}).eq('id',id);
+  await admLog('reject_suggestion',id,s?.name||id);
+  toast('❌ ההצעה נדחתה');renderAdmSug();
+}
+
+// ADMIN: IMPORT
+function renderAdmImp(){
+  document.getElementById('adm-ct').innerHTML=`
+    <div class="stl">📥 ייבוא נתונים</div>
+    <div class="idrp" id="idrp" onclick="document.getElementById('ifl').click()">
+      <div style="font-size:1.6rem;margin-bottom:5px">📂</div>
+      <div style="font-weight:700;color:#c8a96e;margin-bottom:2px">לחץ או גרור קובץ לכאן</div>
+      <div style="font-size:.74rem">תומך: KML, CSV, GeoJSON</div>
+      <input type="file" id="ifl" accept=".kml,.csv,.geojson" style="display:none">
+    </div>
+    <div id="ipv"></div>
+    <div id="iac" style="display:none;margin-top:10px;gap:8px;justify-content:flex-end">
+      <button class="bc" id="icn-btn" style="border-color:#3d3d60;color:#c0c0e0;background:#12122a">ביטול</button>
+      <button class="bs" id="icf-btn" style="background:#27ae60">ייבא נקודות</button>
+    </div>`;
+  const drp=document.getElementById('idrp'),fl=document.getElementById('ifl');
+  drp.addEventListener('dragover',e=>{e.preventDefault();drp.style.borderColor='#c8a96e';});
+  drp.addEventListener('dragleave',()=>drp.style.borderColor='');
+  drp.addEventListener('drop',e=>{e.preventDefault();drp.style.borderColor='';handleImp(e.dataTransfer.files[0]);});
+  fl.addEventListener('change',()=>handleImp(fl.files[0]));
+}
+async function handleImp(file){
+  if(!file)return;
+  const ext=file.name.split('.').pop().toLowerCase();
+  let pts=[];
+  try{
+    if(ext==='csv')pts=await parseCSV(file);
+    else if(ext==='kml')pts=parseKML(await file.text());
+    else if(ext==='geojson')pts=parseGJ(await file.text());
+    else{toast('⚠️ פורמט לא נתמך');return;}
+  }catch(e){toast('⚠️ שגיאה בקריאת הקובץ');console.error(e);return;}
+  if(!pts.length){toast('לא נמצאו נקודות');return;}
+  pts.forEach(p=>{p._dup=!!PTS.find(ex=>ex.name.trim()===p.name.trim()||(Math.abs(ex.lat-p.lat)<0.001&&Math.abs(ex.lng-p.lng)<0.001));});
+  importData=pts;
+  document.getElementById('ipv').innerHTML=`
+    <div style="color:#c8a96e;font-weight:700;margin:10px 0 6px">${pts.length} נקודות נמצאו:</div>
+    <div class="ipv">${pts.map(p=>`<div class="ipr">
+      <span>${ICO[p.cat]||'📍'}</span>
+      <span style="flex:1;color:#e0e0f8;font-weight:600">${p.name}</span>
+      <span style="color:#6060a0;font-size:.7rem">${p.lat?.toFixed(4)}, ${p.lng?.toFixed(4)}</span>
+      <span class="itg ${p._dup?'dp':'nw'}">${p._dup?'כפול':'חדש'}</span>
+    </div>`).join('')}</div>`;
+  const iac=document.getElementById('iac');
+  iac.style.display='flex';
+  document.getElementById('icn-btn').onclick=()=>{importData=[];document.getElementById('ipv').innerHTML='';iac.style.display='none';};
+  document.getElementById('icf-btn').onclick=doImport;
+}
+async function doImport(){
+  const news=importData.filter(p=>!p._dup);
+  if(!news.length){toast('אין נקודות חדשות לייבוא');return;}
+  const btn=document.getElementById('icf-btn');
+  btn.disabled=true;btn.innerHTML='<span class="sp"></span>';
+  const{error}=await sb.from('points').insert(news.map(p=>({name:p.name,cat:p.cat||'יישוב',area:p.area||null,lat:p.lat,lng:p.lng,description:p.description||null,tags:p.tags||[],added:isoDate()})));
+  btn.disabled=false;btn.textContent='ייבא נקודות';
+  if(error){toast('⚠️ שגיאה בייבוא');console.error(error);return;}
+  await admLog('import',null,`ייבוא ${news.length} נקודות`);
+  toast(`✅ יובאו ${news.length} נקודות`);
+  importData=[];await loadPts();renderAdmImp();
+}
+function parseCSV(file){
+  return file.text().then(txt=>{
+    const lines=txt.trim().split('\n');
+    const hdrs=lines[0].split(',').map(h=>h.trim().toLowerCase().replace(/"/g,''));
+    return lines.slice(1).filter(Boolean).map(line=>{
+      const vals=line.split(',').map(v=>v.trim().replace(/"/g,''));
+      const o={};hdrs.forEach((h,i)=>o[h]=vals[i]||'');
+      return{name:o.name||o['שם']||'ללא שם',lat:+(o.lat||o.latitude||0),lng:+(o.lng||o.longitude||o.lon||0),cat:o.cat||'יישוב',area:o.area||'',description:o.description||o.desc||''};
+    }).filter(p=>p.lat&&p.lng);
+  });
+}
+function parseKML(txt){
+  const doc=new DOMParser().parseFromString(txt,'text/xml');
+  return[...doc.querySelectorAll('Placemark')].map(pm=>{
+    const name=(pm.querySelector('name')?.textContent||'').trim();
+    const desc=(pm.querySelector('description')?.textContent||'').trim().replace(/<[^>]*>/g,'');
+    const coord=pm.querySelector('Point coordinates');
+    if(!coord)return null;
+    const[lng,lat]=coord.textContent.trim().split(',').map(Number);
+    if(!lat||!lng)return null;
+    return{name:name||'ללא שם',lat,lng,description:desc,cat:'יישוב',area:'',tags:[]};
+  }).filter(Boolean);
+}
+function parseGJ(txt){
+  const gj=JSON.parse(txt);
+  return(gj.features||[]).filter(f=>f.geometry?.type==='Point').map(f=>{
+    const[lng,lat]=f.geometry.coordinates,p=f.properties||{};
+    return{name:p.name||'ללא שם',lat,lng,cat:p.cat||'יישוב',area:p.area||'',description:p.description||'',tags:[]};
+  });
+}
+
+// ADMIN: LOG
+async function renderAdmLog(){
+  const c=document.getElementById('adm-ct');
+  c.innerHTML=`<div class="stl">📋 יומן שינויים</div><div id="al-w" style="color:#8888cc">טוען...</div>`;
+  const{data}=await sb.from('audit_log').select('*').order('created_at',{ascending:false}).limit(100);
+  const lbl={add_point:'הוספת נקודה',edit_point:'עריכת נקודה',delete_point:'מחיקת נקודה',approve_suggestion:'אישור הצעה',reject_suggestion:'דחיית הצעה',import:'ייבוא נתונים'};
+  document.getElementById('al-w').innerHTML=!data?.length?'<p style="color:#8888cc">יומן ריק</p>':`
+    <div class="atw">${data.map(l=>`<div class="alr">
+      <span class="aa2">${lbl[l.action]||l.action}</span>
+      ${l.target_name?`<span style="color:#d0d0e8">"${l.target_name}"</span>`:''}
+      <span style="float:left;color:#606080;font-size:.68rem">${new Date(l.created_at).toLocaleString('he-IL')}</span>
+    </div>`).join('')}</div>`;
+}
+async function admLog(action,targetId,targetName,details={}){
+  await sb.from('audit_log').insert({action,target_id:targetId||null,target_name:targetName,details}).catch(()=>{});
+}
+
+// ADMIN: ADD/EDIT FORM
+document.getElementById('adm-add').onclick=()=>openAF(null);
+function openAF(id){
+  const p=id?PTS.find(x=>x.id===id):null;
+  document.getElementById('af-ttl').textContent=p?`✏️ עריכה: ${p.name}`:'➕ הוספת נקודה';
+  document.getElementById('af-id').value=p?.id||'';
+  document.getElementById('af-n').value=p?.name||'';
+  document.getElementById('af-cat').value=p?.cat||'יישוב';
+  document.getElementById('af-ar').value=p?.area||'';
+  document.getElementById('af-zone').value=p?.zone||'';
+  document.getElementById('af-lat').value=p?.lat||'';
+  document.getElementById('af-lng').value=p?.lng||'';
+  document.getElementById('af-d').value=p?.description||'';
+  document.getElementById('af-img').value=p?.img||'';
+  document.getElementById('af-tags').value=(p?.tags||[]).join(', ');
+  document.getElementById('af-lnk').value='';
+  document.getElementById('af-cd').textContent=p?`${p.lat?.toFixed(5)}, ${p.lng?.toFixed(5)}`:'לחץ על המפה לסימון מיקום';
+  document.getElementById('af-ov').classList.add('on');
+  const cLat=p?.lat||31.8,cLng=p?.lng||35.2;
+  setTimeout(()=>{
+    if(!afMap){
+      afMap=L.map('af-mp',{center:[cLat,cLng],zoom:p?13:8,zoomControl:false});
+      L.tileLayer('https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{maxZoom:21,subdomains:['0','1','2','3']}).addTo(afMap);
+      L.control.zoom({position:'topright'}).addTo(afMap);
+      afMap.on('click',e=>setAFMkr(e.latlng.lat,e.latlng.lng));
+    }else{afMap.setView([cLat,cLng],p?13:8);}
+    if(p)setAFMkr(p.lat,p.lng);
+    else if(afMkr){afMkr.remove();afMkr=null;}
+    afMap.invalidateSize();
+  },120);
+}
+function setAFMkr(lat,lng){
+  document.getElementById('af-lat').value=lat.toFixed(6);
+  document.getElementById('af-lng').value=lng.toFixed(6);
+  document.getElementById('af-cd').textContent=`${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  if(afMkr)afMkr.setLatLng([lat,lng]);
+  else{afMkr=L.marker([lat,lng],{draggable:true}).addTo(afMap);
+    afMkr.on('dragend',ev=>{const q=ev.target.getLatLng();setAFMkr(q.lat,q.lng);});}
+}
+['af-lat','af-lng'].forEach(id=>document.getElementById(id).addEventListener('change',()=>{
+  const lat=+document.getElementById('af-lat').value;
+  const lng=+document.getElementById('af-lng').value;
+  if(lat&&lng){setAFMkr(lat,lng);afMap?.setView([lat,lng],13);}
+}));
+document.getElementById('af-ext').onclick=()=>{
+  const url=document.getElementById('af-lnk').value.trim();
+  if(!url){toast('הכנס קישור תחילה');return;}
+  const c=extractCoords(url);
+  if(!c){toast('⚠️ לא ניתן לחלץ קואורדינטות');return;}
+  setAFMkr(c.lat,c.lng);afMap?.setView([c.lat,c.lng],14);
+  toast('✅ מיקום עודכן');
+};
+['af-c','af-cn'].forEach(id=>document.getElementById(id).onclick=()=>document.getElementById('af-ov').classList.remove('on'));
+
+document.getElementById('af-sv').onclick=async()=>{
+  const name=document.getElementById('af-n').value.trim();
+  const lat=+document.getElementById('af-lat').value;
+  const lng=+document.getElementById('af-lng').value;
+  if(!name){toast('יש למלא שם');return;}
+  if(!lat||!lng){toast('יש לסמן מיקום');return;}
+  const id=document.getElementById('af-id').value;
+  const tags=(document.getElementById('af-tags').value||'').split(',').map(t=>t.trim()).filter(Boolean);
+  const payload={name,cat:document.getElementById('af-cat').value,
+    area:document.getElementById('af-ar').value||null,
+    zone:document.getElementById('af-zone').value||null,
+    lat,lng,
+    description:document.getElementById('af-d').value.trim()||null,
+    img:document.getElementById('af-img').value.trim()||null,
+    tags,added:isoDate()};
+  const btn=document.getElementById('af-sv');
+  btn.disabled=true;btn.innerHTML='<span class="sp" style="border-top-color:#1a1a00"></span>';
+  let error;
+  if(id){
+    const r=await sb.from('points').update(payload).eq('id',id);error=r.error;
+    if(!error)await admLog('edit_point',id,name);
+  }else{
+    const r=await sb.from('points').insert(payload);error=r.error;
+    if(!error)await admLog('add_point',null,name);
+  }
+  btn.disabled=false;btn.textContent='שמור';
+  if(error){toast('⚠️ שגיאה: '+error.message);console.error(error);return;}
+  toast(id?`✅ "${name}" עודכנה`:`✅ "${name}" נוספה`);
+  document.getElementById('af-ov').classList.remove('on');
+  await loadPts();renderAdmPts();
+};
+
+// DELETE
+function confirmDel(id){
+  delId=id;
+  const p=PTS.find(x=>x.id===id);
+  document.getElementById('cf-txt').textContent=`האם למחוק את "${p?.name||id}"?`;
+  document.getElementById('cf-ov').classList.add('on');
+}
+document.getElementById('cf-no').onclick=()=>{delId=null;document.getElementById('cf-ov').classList.remove('on');};
+document.getElementById('cf-yes').onclick=async()=>{
+  if(!delId){document.getElementById('cf-ov').classList.remove('on');return;}
+  const p=PTS.find(x=>x.id===delId);
+  const{error}=await sb.from('points').delete().eq('id',delId);
+  document.getElementById('cf-ov').classList.remove('on');
+  if(error){toast('⚠️ שגיאה במחיקה');return;}
+  await admLog('delete_point',delId,p?.name||delId);
+  toast('🗑️ הנקודה נמחקה');delId=null;
+  await loadPts();renderAdmPts();
+};
+
+// EXPORT
+document.getElementById('adm-exp').onclick=()=>{
+  const menu=document.createElement('div');
+  menu.style.cssText='position:fixed;top:50px;right:70px;background:#1a1a2e;border:1px solid #3d3d60;border-radius:8px;padding:6px;z-index:9999;min-width:140px';
+  ['CSV','KML','GeoJSON'].forEach(fmt=>{
+    const b=document.createElement('button');
+    b.textContent=`⬇️ ${fmt}`;
+    b.style.cssText='display:block;width:100%;padding:6px 11px;background:#12122a;border:1px solid #2d2d50;border-radius:5px;color:#e0e0f8;cursor:pointer;font-family:inherit;font-size:.79rem;text-align:right;margin-bottom:3px';
+    b.onclick=()=>{doExport(fmt);document.body.removeChild(menu);};
+    menu.appendChild(b);
+  });
+  document.body.appendChild(menu);
+  setTimeout(()=>{if(document.body.contains(menu))document.body.removeChild(menu);},4000);
+};
+function doExport(fmt){
+  let content='',mime='',ext='';
+  if(fmt==='CSV'){
+    content=['id,name,cat,area,zone,lat,lng,description,tags,added',...PTS.map(p=>[p.id,p.name,p.cat,p.area||'',p.zone||'',p.lat,p.lng,`"${(p.description||'').replace(/"/g,'""')}"`,`"${(p.tags||[]).join(';')}"`,p.added||''].join(','))].join('\n');
+    mime='text/csv';ext='csv';
+  }else if(fmt==='KML'){
+    content=`<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document>\n${PTS.map(p=>`  <Placemark><name>${p.name}</name><description>${p.description||''}</description><Point><coordinates>${p.lng},${p.lat},0</coordinates></Point></Placemark>`).join('\n')}\n</Document></kml>`;
+    mime='application/vnd.google-earth.kml+xml';ext='kml';
+  }else{
+    content=JSON.stringify({type:'FeatureCollection',features:PTS.map(p=>({type:'Feature',geometry:{type:'Point',coordinates:[p.lng,p.lat]},properties:{id:p.id,name:p.name,cat:p.cat,area:p.area,zone:p.zone,description:p.description,tags:p.tags,added:p.added}}))},null,2);
+    mime='application/geo+json';ext='geojson';
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type:mime}));
+  a.download=`mapat-hahityashvut.${ext}`;a.click();
+  toast(`✅ יוצא ${fmt} – ${PTS.length} נקודות`);
+}
+
+// INIT – also add zone column to Supabase if missing (graceful)
+loadPts();
+</script>
+</body>
+</html>
